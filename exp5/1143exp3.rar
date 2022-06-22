@@ -1,0 +1,320 @@
+
+#!/usr/bin/python3
+# Rate monotonic scheduling is a priority algorithm that belongs to the static priority scheduling category of Real Time Operating Systems. 
+# It is preemptive in nature. The priority is decided according to the cycle time of the processes that are involved.
+# If the process has a small job duration, then it has the highest priority. Thus if a process with highest priority starts execution, 
+# It will preempt the other running processes. The priority of a process is inversely proportional to the period it will run for.
+
+
+# Task with lowest time period has highest priority and the task with highest period will have lowest priority.
+
+
+from asyncio import tasks
+from logging import error
+from pickle import TRUE
+import re
+import time
+import os
+import matplotlib.pyplot as plt
+from math import gcd  as hcf # to calculte hyper period
+from math import pow,floor,ceil
+from colorama import Fore,Back,Style
+
+# Event driven, Static priority, Preemptive
+# Priority assigned based on periods (rate of occurrences)
+# Shorter period (highest rate of occurrence) has highest priority
+
+
+
+
+
+class task:
+    taskname='A TASK'
+    priority=0
+    period=0
+    exectime=0
+    taskno=0
+    deadline=0
+    
+
+    _nextdeadlinein=0
+    _remainingexectime=0
+    _remaingtimeforrelease=0
+    _remingnoofinstances=0
+    _isreleased=0
+
+
+    def __init__(self,exectime,period,taskno,deadline):
+        self.exectime=exectime
+        self.period=period
+        self.taskno=taskno
+        self.deadline=deadline
+
+        pass
+
+    def setPriority(self,value):
+        self.priority=value
+
+    def __lt__(self,other):
+        # the one with lowest deadline
+        return self._nextdeadlinein  < other._nextdeadlinein
+
+    def __str__(self) -> str:
+        print("taskno   =",self.taskno)
+        print("Taskname =",self.taskname)
+        print("Exectime =",self.exectime)
+        print("Period   =",self.period)
+        print("Priority =",self.priority)
+        print("Dead line=",self.deadline)
+        return "----------------------------------"
+
+
+
+class EDF:
+
+    #TODO:
+    # 1.GET TASK ATTRIBUTES ()
+    # 2. check schedulablity,rm analysis stuff
+    # 3.
+
+
+
+    numoftasks=0
+    exec_times=[]
+    timeperiods=[]
+    readyQ=[]
+    blockQ=[]
+    tasks=[]  #### 
+    priorities=[]
+    deadlines=[]
+    exec_q=[]
+    exec_trace=[]
+
+    idletask=task(-1,-1,-1,-1)
+    idletask.taskname="IDLE task"
+    uselowvalforHighpriority=1
+    hyperpriod=0
+
+    def clearStuff(self):
+        print("RESETTING THE CLASSS VALUES")
+        self.numoftasks=0
+        self.exec_times=[]
+        self.timeperiods=[]
+        self.readyQ=[]
+        self.blockQ=[]
+        self.tasks=[] 
+        self.priorities=[]
+        self.uselowvalforHighpriority=1
+        self.hyperpriod=0
+        return True
+
+    def getTaskParmeters(self):
+        while True:
+            try:
+                print("Enter the number of tasks")
+                self.numoftasks=int(input() or "4")
+                print("Enter period of tasks seperated by comas:")
+                self.timeperiods=[ int(i) for i in (input() or ("3,6,5,10")).split(",")]
+                print("Enter exec times seperated by comas:")
+                self.exec_times=[ int(i) for i in (input() or "1,1,1,3").split(",") ]
+
+                print("Enter Deadlines seperated by comas:")
+                self.deadlines=[ int(i) for i in (input() or ("3,6,5,10") ).split(",") ]
+
+                count=0
+                for i,j,k in zip(self.exec_times,self.timeperiods,self.deadlines):
+                    taskobj=task(i,j,count,k)
+                    taskobj.taskname=str(count+1)
+                    count+=1
+                    self.tasks.append(taskobj)
+                break
+            except :
+                print("Error in input format",e,"\n\n")
+            
+        return True
+
+    def calculateHyperPeriod(self):
+        # the following is an algoritham    using gcd to calculate lcm of a given set of numbers
+        # lcm of a&b = a*b/hcf(a,b)
+        lcm =1
+        for i in self.tasks:
+            lcm=lcm*i.period//hcf(lcm,i.period)
+
+        # the following is some dummy stuff
+        return lcm
+
+
+
+    def checkSchedulablity(self):
+        ## necessary condition        
+        util=0
+        for i in self.tasks:
+            print(util)
+            util=util+(i.exectime/i.period)
+
+        if util <= 1 :
+            print("THIS TASK LIST IS satisfies necessary condition  Utilisation=",util)
+            return True
+        else:
+            print("THIS TASK LIST does not satisfy necessary condition utilisation=",util)
+            return False
+        
+
+
+
+
+    def configureIdleTask(self):
+        # for simulation
+        self.idletask.period=self.hyperpriod  ## ensure that this has a lowest priority
+        self.idletask._remainingexectime=self.hyperpriod+20
+        self.idletask.deadline=self.hyperpriod+20
+        self.idletask._nextdeadlinein= self.hyperpriod+20
+        pass
+
+
+    def checkPDA(self):
+        
+        L_list=[]
+        
+        for tick in range(0,self.hyperpriod,1): # strt,stop(-1),step
+            for i in self.tasks:
+                if(tick % i.period ==0):
+                    L_list.append([tick+i.deadline,i])
+            
+        # l is populted
+
+        for L in L_list:
+            l=0
+            for task in self.tasks:
+                l+=floor(( (L[0]-task.deadline)/task.period )+1)*task.exectime
+            print(Fore.RED,l,Style.RESET_ALL)
+            
+            if(not(L[0]>=l)):
+                print("Failed at",L[0],"FOR THE TASK",L[1])
+                return False
+        print(Fore.GREEN,"PDA passed",Style.RESET_ALL)        
+        return True
+            
+    
+
+
+    ## Dynamic scheduling
+
+
+    def schedule_Dispatch_Simulate(self):
+
+        self.configureIdleTask()
+        self.readyQ=[]
+        taskinexec=self.idletask
+        
+        self.hyperpriod=self.calculateHyperPeriod()
+        for i in self.tasks:
+            i._remingnoofinstances=self.hyperpriod/i.exectime
+            i._remaingtimeforrelease=0
+            i._remainingexectime=i.exectime
+
+        
+        print("\n\n______________SIMULATING________________")
+        print(Fore.BLUE,"Task no -1 is IDLE task\n",Style.RESET_ALL)
+        # this is like systick
+        for tick in range(self.hyperpriod):
+
+            # emulating relaease 
+            for j in self.tasks:
+                if (tick % j.period == 0):
+                    j._isreleased=1
+                    j._remainingexectime=j.exectime
+                    j._nextdeadlinein=tick+j.deadline
+                    
+
+        
+            ## build the ready q
+            for j in self.tasks:
+                if(j._isreleased):
+                    print(Fore.BLUE,"NEW TASK ADDED TO THE READY Q",Style.RESET_ALL)
+                    self.readyQ.append(j)
+                    j._isreleased=0
+   
+
+
+
+            #execution stuff
+            self.readyQ.sort()                   # puts the one with lowest deadline first
+            print("READY QUEUE b4 exec",end="--->")
+            for i in self.readyQ:
+                if(i.taskname==self.idletask.taskname):
+                    print("IDLE_TASK",end= " ")
+                else:
+                    print(i.taskno,"(",i._nextdeadlinein,")",end= "|")
+
+           
+           # case task in execution complete
+            if(taskinexec._remainingexectime==0):  
+                print("\nExecution completed for",taskinexec.taskno)   
+                taskinexec=self.readyQ[0]
+                self.readyQ.remove(taskinexec)
+            else :   
+                #case premption switch happens   NOTE > because higher means lower priority
+                if(len(self.readyQ) > 0):
+                    if(taskinexec._nextdeadlinein > self.readyQ[0]._nextdeadlinein):  
+                        print("\nContext switch")
+                        temptask=self.readyQ[0]
+                        self.readyQ.remove(temptask)
+                        if(taskinexec._remainingexectime): ## if no remaining time we throw it away
+                            self.readyQ.append(taskinexec)
+                        taskinexec=temptask
+
+           # the execution
+            if taskinexec._remainingexectime > 0:
+                taskinexec._remainingexectime -=1
+                taskinexec._nextdeadlinein -=1
+
+                
+
+
+            print("\n ####################")
+            print(Fore.GREEN,"Slot :",tick," Taskin exec is",taskinexec.taskno,"With Remaining exec time =",taskinexec._remainingexectime)
+            print(Style.RESET_ALL,"######################\n\n")
+
+            self.exec_trace.append(taskinexec)
+
+    # taskinexec=self.readyQ[0]
+
+            pass
+
+        pass
+
+
+
+
+
+
+    # def updateSchedule(self):
+    #     pass
+
+    # def dispatcher(self):
+    #     pass
+
+    def prettyPrint(self):
+        pass
+
+
+    def __str__(self):
+        for i in self.tasks:
+            print(i)
+        return("----------------------------------")
+
+
+
+
+if __name__=="__main__":
+    X=EDF()
+    X.getTaskParmeters()
+    X.hyperpriod=X.calculateHyperPeriod()
+    print("hyper period",X.hyperpriod)
+    X.checkSchedulablity()
+    if(X.checkPDA()):
+        X.schedule_Dispatch_Simulate()
+    pass
+
+
